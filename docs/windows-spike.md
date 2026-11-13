@@ -4,6 +4,19 @@ A spike to decide how Ardia runs on Windows, in the shape of the ArdiaCore spike
 the smallest thing that proves the risky part, run automated checks against it, and end with a verdict (GO,
 GO-WITH-CHANGES or NO-GO). Nothing here ships. The Mac app does not change.
 
+## Findings so far (2026-11-13)
+
+Checked before any build:
+
+| Assumption | Result |
+| --- | --- |
+| Helium ships Windows at our pin | **Yes.** `imputnet/helium-windows` 0.21.2.1 builds on helium-chromium `e817502a`, the commit `engine/patches/build/helium-pins.ini` pins, at Chromium 157.0.8103.50. It adds 26 patches of its own (`patches/series`) |
+| Our series applies on top of it | **Likely, with small fixes.** Only three files are touched by both: `chrome/BUILD.gn` (ours: `chromium-ardia-layer`, `chromium-angle-metal-shader-cache`; theirs: `windows-disable-reorder-fix-linking`) and `chrome/browser/BUILD.gn` (ours: `chromium-helium-onboarding-off`; theirs: two updater patches) |
+| WinSparkle for updates | **Already there.** Helium's Windows updater is WinSparkle (`helium/windows/updater/*`); its feed has to be emptied as on the Mac (`chromium-helium-branding.patch`) and the app's updater pointed at our appcast |
+| Chrome encrypts secrets with DPAPI | **Yes, unless `--disable-encryption` is passed.** ungoogled's `windows-disable-encryption` turns encryption off only behind that switch, so the profile gate (`ac_main_delegate.cc`) must drop it on a real profile, as it drops the other switches that weaken one |
+| Our patches are platform-neutral | **Mostly.** `chromium-webstore-direct.patch` sends `os=mac` to the Web Store; it has to name the real platform. `chromium-helium-rlz-for-cdm-storage-id.patch` reasons about the Mac's machine id; Windows needs its own look at `windows-disable-rlz` |
+| This machine can build Chromium 157 | **Not yet.** Chromium 157 wants Visual Studio 2026 (`MSVS_VERSIONS` in `build/vs_toolchain.py`), Windows SDK 10.0.28000 and SDK Debugging Tools 10.0.26100.3323 or later. Installed: VS 2022 17.14 and SDKs up to 10.0.26100. Disk: Chromium asks for 100 GB free on NTFS; C: (internal NVMe) has 84 GB, D: is ReFS on USB. CPU (16 cores) and RAM (64 GB) are enough |
+
 ## The question
 
 On the Mac a tab's `WebContentsViewCocoa` is an NSView inside React Native's NSViews, so the UI draws over pages
