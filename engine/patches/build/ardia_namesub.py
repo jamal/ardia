@@ -13,6 +13,8 @@ placeholders and link targets included, still says helium or imput in any case.
 Usage: ardia_namesub.py --tree <chromium/src> --helium <helium-chromium checkout> [--workers N] [--check-only]
 """
 import argparse
+import concurrent.futures
+import functools
 import multiprocessing
 import pathlib
 import re
@@ -175,7 +177,11 @@ def main():
         copyright_ids, translations = restore_copyright(namesub, util, tree)
         print(f'ardia_namesub: copyright lines back to The Chromium Authors: {len(copyright_ids)} messages, '
               f'{translations} translations')
-        multiprocessing.set_start_method('fork', force=True)
+        if 'fork' in multiprocessing.get_all_start_methods():
+            multiprocessing.set_start_method('fork', force=True)
+        else:
+            namesub.ProcessPoolExecutor = functools.partial(
+                concurrent.futures.ProcessPoolExecutor, initializer=helium_utils, initargs=(str(args.helium),))
         namesub.do_substitution(tree, None, args.workers, False)
     claims = copyright_claims(namesub, tree, copyright_ids)
     if claims:
