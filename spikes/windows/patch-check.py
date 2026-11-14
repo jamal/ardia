@@ -195,7 +195,8 @@ def main():
                  first_lines(game.stdout if game.returncode == 0 else game.stderr or game.stdout)))
 
     report = ctx.work / 'patch-check.tsv'
-    report.write_text('source\tstep\tstatus\tdetail\n' + ''.join('\t'.join(r) + '\n' for r in rows), encoding='utf-8')
+    report.write_text('source\tstep\tstatus\tdetail\n' + ''.join('\t'.join(r) + '\n' for r in rows), encoding='utf-8',
+                      newline='\n')
     counts = {}
     for source, _, status, _ in rows:
         counts.setdefault(source, {}).setdefault(status, 0)
