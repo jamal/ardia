@@ -9,6 +9,7 @@ source_set("ardia") {
     "ac_bookmarks.cc",
     "ac_browsing_data.cc",
     "ac_cli_control.cc",
+    "ac_cli_control_file.h",
     "ac_cli_owned_tabs.cc",
     "ac_cli_owned_tabs.h",
     "ac_cli_token_policy.cc",
@@ -42,6 +43,7 @@ source_set("ardia") {
     "ac_process.cc",
     "ac_reauth.cc",
     "ac_reauth.h",
+    "ac_scripts_paths.h",
     "ac_scripts_policy.cc",
     "ac_scripts_policy.h",
     "ac_search_engines.cc",
@@ -57,6 +59,7 @@ source_set("ardia") {
     "ac_zoom.cc",
     "pip/ac_pip_controls.cc",
     "pip/ac_pip_controls.h",
+    "pip/ac_pip_native.h",
     "pip/ac_pip_window.cc",
     "pip/ac_pip_window.h",
     "public/ac_engine.h",
@@ -135,10 +138,27 @@ source_set("ardia") {
     "//url",
   ]
 
+  if (is_posix) {
+    sources += [
+      "ac_cli_control_file_posix.cc",
+      "ac_scripts_paths_posix.cc",
+    ]
+  }
+  if (is_win) {
+    sources += [
+      "ac_cli_control_file_win.cc",
+      "ac_scripts_paths_win.cc",
+      "pip/ac_pip_win.cc",
+    ]
+    deps += [
+      "//ardia/core:host_visibility_win",
+      "//ui/aura",
+      "//ui/compositor",
+    ]
+  }
   if (is_mac) {
     sources += [
       "ac_external_apps.mm",
-      "pip/ac_pip_mac.h",
       "pip/ac_pip_mac.mm",
     ]
     frameworks = [

@@ -94,6 +94,27 @@ def helium_stage(helium, ctx, rows):
             rows.append(('03-helium', stage, 'FAILED', first_lines(str(e))))
 
 
+def normalize_line_endings(tree, rows):
+    listing = subprocess.run(['git', 'ls-files', '--eol'], cwd=tree, capture_output=True, text=True,
+                             encoding='utf-8', errors='surrogateescape')
+    if listing.returncode:
+        rows.append(('03-helium', 'line endings', 'FAILED', first_lines(listing.stderr)))
+        return
+    count = 0
+    for line in listing.stdout.splitlines():
+        flags, _, path = line.partition('\t')
+        fields = flags.split()
+        if len(fields) < 2 or fields[0] != 'i/lf' or fields[1] not in ('w/crlf', 'w/mixed'):
+            continue
+        target = tree / path
+        data = target.read_bytes()
+        fixed = data.replace(b'\r\n', b'\n')
+        if fixed != data:
+            target.write_bytes(fixed)
+            count += 1
+    rows.append(('03-helium', 'line endings', 'applied', f'{count} files back to LF'))
+
+
 def git(tree, *args):
     return subprocess.run(['git', *args], cwd=tree, capture_output=True, text=True)
 
@@ -188,6 +209,7 @@ def main():
 
     rows = []
     helium_stage(helium, ctx, rows)
+    normalize_line_endings(tree, rows)
     series_stage(series, tree, helium.PATCH, ctx.work, rows)
     game = subprocess.run([sys.executable, str(REPO / 'apps/browser/assets/offline-game-pipeline/inline.py'),
                            str(tree / 'components/neterror/resources/game/game.html')], capture_output=True, text=True)

@@ -2,11 +2,6 @@
 
 #include "chrome/browser/ardia/ac_scripts_policy.h"
 
-#include <limits.h>
-#include <stdlib.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
 #include <memory>
 #include <algorithm>
 #include <optional>
@@ -25,6 +20,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
+#include "chrome/browser/ardia/ac_scripts_paths.h"
 #include "chrome/common/chrome_paths.h"
 #include "components/crx_file/id_util.h"
 #include "content/public/browser/navigation_handle.h"
@@ -49,6 +45,12 @@ namespace ardia {
 namespace {
 
 using extensions::Extension;
+using scripts_paths::AbsoluteParts;
+using scripts_paths::IsLocal;
+using scripts_paths::IsPlainName;
+using scripts_paths::Kind;
+using scripts_paths::KindOf;
+using scripts_paths::RealPath;
 
 constexpr size_t kMaxContentScripts = 256;
 constexpr size_t kMaxFilesPerList = 256;
@@ -65,62 +67,23 @@ constexpr auto kContentScriptKeys = base::MakeFixedFlatSet<std::string_view>(
      "js", "match_about_blank", "match_origin_as_fallback", "matches",
      "run_at", "world"});
 
-std::optional<base::FilePath> RealPath(const base::FilePath& path) {
-  char resolved[PATH_MAX];
-  if (!realpath(path.value().c_str(), resolved)) {
-    return std::nullopt;
-  }
-  return base::FilePath(resolved);
-}
-
-std::optional<mode_t> LinkType(const base::FilePath& path) {
-  struct stat info;
-  if (lstat(path.value().c_str(), &info) != 0) {
-    return std::nullopt;
-  }
-  return info.st_mode & S_IFMT;
-}
-
-std::optional<std::vector<std::string>> AbsoluteParts(
-    const base::FilePath& path) {
-  std::string value = path.value();
-  if (value == "~" || value.starts_with("~/")) {
-    if (const char* home = getenv("HOME")) {
-      value = std::string(home) + value.substr(1);
-    }
-  }
-  if (value.empty() || value.front() != '/') {
-    char cwd[PATH_MAX];
-    if (!getcwd(cwd, sizeof(cwd))) {
-      return std::nullopt;
-    }
-    value = std::string(cwd) + "/" + value;
-  }
-  std::vector<std::string> parts;
-  for (std::string& part : base::SplitString(
-           value, "/", base::KEEP_WHITESPACE, base::SPLIT_WANT_NONEMPTY)) {
-    if (part != ".") {
-      parts.push_back(std::move(part));
-    }
-  }
-  return parts;
-}
-
 base::FilePath Collapsed(base::FilePath base,
-                         const std::vector<std::string>& parts,
+                         const std::vector<base::FilePath::StringType>& parts,
                          size_t from) {
   for (size_t i = from; i < parts.size(); ++i) {
-    base = parts[i] == ".." ? base.DirName() : base.Append(parts[i]);
+    base = parts[i] == FILE_PATH_LITERAL("..") ? base.DirName()
+                                                : base.Append(parts[i]);
   }
   return base;
 }
 
 base::FilePath LexicallyAbsolute(const base::FilePath& path) {
-  const std::optional<std::vector<std::string>> parts = AbsoluteParts(path);
-  return parts ? Collapsed(base::FilePath("/"), *parts, 0) : base::FilePath();
+  const std::optional<scripts_paths::Absolute> absolute = AbsoluteParts(path);
+  return absolute ? Collapsed(absolute->root, absolute->parts, 0)
+                  : base::FilePath();
 }
 
-std::string Lowered(const base::FilePath& path) {
+base::FilePath::StringType Lowered(const base::FilePath& path) {
   return base::ToLowerASCII(path.StripTrailingSeparators().value());
 }
 
@@ -147,12 +110,12 @@ std::optional<std::string> ScriptFileProblem(const base::FilePath& root,
   base::FilePath path = root;
   for (size_t i = 0; i < parts.size(); ++i) {
     const std::string& part = parts[i];
-    if (part.empty() || part == "." || part == "..") {
+    if (!IsPlainName(part)) {
       return "\"" + relative + "\" isn't a plain path inside the folder";
     }
-    path = path.Append(part);
+    path = path.Append(base::FilePath::FromUTF8Unsafe(part));
     const bool last = i + 1 == parts.size();
-    if (LinkType(path) != (last ? S_IFREG : S_IFDIR)) {
+    if (KindOf(path) != (last ? Kind::kFile : Kind::kDirectory)) {
       return "\"" + relative + "\" isn't a plain file inside the folder";
     }
   }
@@ -183,9 +146,9 @@ std::optional<std::string> StringListProblem(const base::DictValue& entry,
 bool NamesFolder(const base::FilePath& path) {
   const base::FilePath folder = path.StripTrailingSeparators();
   return base::EqualsCaseInsensitiveASCII(folder.BaseName().value(),
-                                          "extension") &&
+                                          FILE_PATH_LITERAL("extension")) &&
          base::EqualsCaseInsensitiveASCII(folder.DirName().BaseName().value(),
-                                          "Scripts");
+                                          FILE_PATH_LITERAL("Scripts"));
 }
 
 std::u16string Refusal(const std::string& problem) {
@@ -199,8 +162,8 @@ class ScriptsPolicyProvider : public extensions::ManagementPolicy::Provider {
     base::FilePath user_data;
     if (base::PathService::Get(chrome::DIR_USER_DATA, &user_data) &&
         !user_data.empty()) {
-      scripts_ = user_data.DirName().Append("Scripts");
-      folder_ = scripts_.Append("extension");
+      scripts_ = user_data.DirName().Append(FILE_PATH_LITERAL("Scripts"));
+      folder_ = scripts_.Append(FILE_PATH_LITERAL("extension"));
       designated_id_ = crx_file::id_util::GenerateIdForPath(folder_);
     }
   }
@@ -274,7 +237,8 @@ class ScriptsPolicyProvider : public extensions::ManagementPolicy::Provider {
     if (std::optional<std::string> problem = CachedShapeProblem(extension)) {
       return problem;
     }
-    if (LinkType(scripts_) != S_IFDIR || LinkType(folder_) != S_IFDIR) {
+    if (KindOf(scripts_) != Kind::kDirectory ||
+        KindOf(folder_) != Kind::kDirectory) {
       return "Scripts/extension must be a plain folder";
     }
     const std::optional<base::FilePath> real_folder = RealPath(folder_);
@@ -454,21 +418,26 @@ class ScriptsPagesThrottle : public content::NavigationThrottle {
 
 bool ResolvedPrefixNamesScripts(const base::FilePath& scripts,
                                 const base::FilePath& requested) {
-  const std::optional<std::vector<std::string>> parts = AbsoluteParts(requested);
-  if (!parts || parts->size() > kMaxPathComponents) {
+  const std::optional<scripts_paths::Absolute> absolute =
+      AbsoluteParts(requested);
+  if (!absolute || absolute->parts.size() > kMaxPathComponents) {
     return true;
   }
+  const std::vector<base::FilePath::StringType>& parts = absolute->parts;
   const std::optional<base::FilePath> real_scripts = RealPath(scripts);
-  base::FilePath prefix("/");
-  for (size_t i = 0; i <= parts->size(); ++i) {
+  base::FilePath prefix = absolute->root;
+  for (size_t i = 0; i <= parts.size(); ++i) {
     if (i > 0) {
-      prefix = prefix.Append((*parts)[i - 1]);
+      prefix = prefix.Append(parts[i - 1]);
     }
     const std::optional<base::FilePath> real = RealPath(prefix);
     if (!real) {
       continue;
     }
-    const base::FilePath candidate = Collapsed(*real, *parts, i);
+    if (!IsLocal(*real)) {
+      return true;
+    }
+    const base::FilePath candidate = Collapsed(*real, parts, i);
     if (IsSameOrInsideIgnoringCase(scripts, candidate) ||
         (real_scripts && IsSameOrInsideIgnoringCase(*real_scripts, candidate))) {
       return true;
@@ -487,6 +456,9 @@ bool RequestNamesScripts(const base::FilePath& scripts,
   std::vector<base::FilePath::StringType> rest;
   for (base::FilePath ancestor = absolute;; ancestor = ancestor.DirName()) {
     if (std::optional<base::FilePath> real = RealPath(ancestor)) {
+      if (!IsLocal(*real)) {
+        return true;
+      }
       base::FilePath candidate = *real;
       for (auto part = rest.rbegin(); part != rest.rend(); ++part) {
         candidate = candidate.Append(*part);
@@ -518,7 +490,8 @@ bool UnpackedPathAllowed(const base::FilePath& requested,
   if (!names_scripts) {
     return true;
   }
-  if (LinkType(scripts) == S_IFDIR && LinkType(folder) == S_IFDIR &&
+  if (KindOf(scripts) == Kind::kDirectory &&
+      KindOf(folder) == Kind::kDirectory &&
       resolved.StripTrailingSeparators() == folder &&
       RealPath(folder) == std::optional<base::FilePath>(folder)) {
     return true;
@@ -566,10 +539,10 @@ std::optional<std::string> ScriptsFolderInstallProblem(
   if (folder.empty()) {
     return "Ardia has no data folder";
   }
-  if (LinkType(path.StripTrailingSeparators().DirName()) != S_IFDIR ||
-      LinkType(path.StripTrailingSeparators()) != S_IFDIR ||
-      LinkType(Scripts().scripts()) != S_IFDIR ||
-      LinkType(folder) != S_IFDIR) {
+  if (KindOf(path.StripTrailingSeparators().DirName()) != Kind::kDirectory ||
+      KindOf(path.StripTrailingSeparators()) != Kind::kDirectory ||
+      KindOf(Scripts().scripts()) != Kind::kDirectory ||
+      KindOf(folder) != Kind::kDirectory) {
     return "Ardia Scripts: Scripts/extension must be a plain folder";
   }
   const std::optional<base::FilePath> real_path = RealPath(path);

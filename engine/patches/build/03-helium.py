@@ -248,7 +248,7 @@ def without_omitted(ctx, name, path):
     kept = ''.join(head) + ''.join(''.join(body) for t, body in sections if not t.startswith(OMITTED))
     out = ctx.work / 'partial' / name
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(kept, errors='surrogateescape')
+    out.write_text(kept, errors='surrogateescape', newline='')
     return out, dropped
 
 
@@ -317,7 +317,7 @@ def stage_fixups(ctx):
             continue
         if s.count(old) != 1:
             raise StageError(f'fixup anchor {old.strip()!r} is not in {rel} exactly once')
-        f.write_text(s.replace(old, new, 1))
+        f.write_text(s.replace(old, new, 1), newline='')
     print(f'{len(FIXUPS)} default prefs turned back on')
 
 
@@ -382,7 +382,7 @@ def stage_version(ctx):
     parts = dict(l.split('=', 1) for l in text.split() if '=' in l)
     lines = [f'HELIUM_{h}={parts[c]}' for h, c in
              (('MAJOR', 'MAJOR'), ('MINOR', 'MINOR'), ('PATCH', 'BUILD'), ('PLATFORM', 'PATCH'))]
-    f.write_text(text + ''.join(l + '\n' for l in lines))
+    f.write_text(text + ''.join(l + '\n' for l in lines), newline='')
     print('chrome/VERSION: ' + ' '.join(lines))
 
 

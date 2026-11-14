@@ -36,4 +36,3 @@ enable_downgrade_processing=false
 enable_resource_allowlist_generation=false
 optimize_webui=true
 branding_file_path="//chrome/app/theme/ardia/BRANDING"
-root_extra_deps=["//chrome/browser/ardia:ardia"]

@@ -26,6 +26,15 @@ source_set("hooks") {
   ]
 }
 
+if (is_win) {
+  source_set("host_visibility_win") {
+    sources = [
+      "ac_host_visibility.h",
+      "ac_host_visibility_win.cc",
+    ]
+  }
+}
+
 if (is_mac) {
   config("exports") {
     ldflags = [ "-Wl,-exported_symbols_list," +

@@ -1,7 +1,15 @@
 diff --git a/chrome/BUILD.gn b/chrome/BUILD.gn
 --- a/chrome/BUILD.gn
 +++ b/chrome/BUILD.gn
-@@ -1319,6 +1319,7 @@
+@@ -397,6 +397,7 @@ if (is_win) {
+       ":chrome_dll_manifest",
+       ":chrome_dll_version",
+       ":dependencies",
++      "//chrome/browser/ardia",  # Ardia: engine/chromium
+       "//chrome/app:chrome_dll_resources",
+       "//chrome/app:command_ids",
+       "//chrome/app/theme:chrome_unscaled_resources",
+@@ -1319,6 +1320,7 @@
        "//chrome/browser:startup_data",
        "//chrome/browser/lifetime",
        "//chrome/browser/mac",

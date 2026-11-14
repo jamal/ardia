@@ -10,7 +10,7 @@ drift=0
 read -r -d '' hooklib <<'PY' || true
 import sys
 mode, path, name = sys.argv[1:4]
-s = open(path).read()
+s = open(path, newline="").read()
 HOOKS = '#include "ardia/core/ac_hooks.h"  // nogncheck\n'
 CONTENT_HOOKS = '#include "ardia/core/ac_content_hooks.h"  // nogncheck\n'
 
@@ -40,7 +40,7 @@ def hook(markers, edit, include=None):
         if result.count(m) != 1:
             sys.exit(f"apply.sh: {name}: {m.strip()!r} is {result.count(m)} times in {path}, not once")
     if result != s:
-        open(path, "w").write(result)
+        open(path, "w", newline="").write(result)
         print("hooked " + name)
 PY
 

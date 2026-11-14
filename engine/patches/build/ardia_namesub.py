@@ -85,7 +85,7 @@ def parse(path, util):
 
 def write(path, root):
     text = xml.tostring(root, encoding='unicode', xml_declaration=True)
-    path.write_text(text.replace('!!dollar-sign-literal!!', '&#36;'), encoding='utf-8')
+    path.write_text(text.replace('!!dollar-sign-literal!!', '&#36;'), encoding='utf-8', newline='')
 
 
 def restore_copyright(namesub, util, tree):
