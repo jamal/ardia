@@ -189,6 +189,10 @@ def main():
     rows = []
     helium_stage(helium, ctx, rows)
     series_stage(series, tree, helium.PATCH, ctx.work, rows)
+    game = subprocess.run([sys.executable, str(REPO / 'apps/browser/assets/offline-game-pipeline/inline.py'),
+                           str(tree / 'components/neterror/resources/game/game.html')], capture_output=True, text=True)
+    rows.append(('series', 'offline game', 'applied' if game.returncode == 0 else 'FAILED',
+                 first_lines(game.stdout if game.returncode == 0 else game.stderr or game.stdout)))
 
     report = ctx.work / 'patch-check.tsv'
     report.write_text('source\tstep\tstatus\tdetail\n' + ''.join('\t'.join(r) + '\n' for r in rows), encoding='utf-8')

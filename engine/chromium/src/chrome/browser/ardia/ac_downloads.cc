@@ -82,7 +82,7 @@ void UseTestDownloadsDir(Profile* profile) {
   }
   profile->GetPrefs()->SetDefaultPrefValue(
       prefs::kDownloadDefaultDirectory,
-      base::FilePathToValue(base::FilePath(*dir)));
+      base::FilePathToValue(base::FilePath::FromUTF8Unsafe(*dir)));
 }
 
 base::DictValue Describe(DownloadItem* item) {
@@ -98,8 +98,8 @@ base::DictValue Describe(DownloadItem* item) {
   return base::DictValue()
       .Set("id", item->GetGuid())
       .Set("url", item->GetOriginalUrl().spec())
-      .Set("filename", name.value())
-      .Set("path", path.value())
+      .Set("filename", name.AsUTF8Unsafe())
+      .Set("path", path.AsUTF8Unsafe())
       .Set("state", StateName(*item))
       .Set("paused", item->IsPaused())
       .Set("received", static_cast<double>(item->GetReceivedBytes()))
@@ -369,7 +369,7 @@ constexpr CommandEntry kCommands[] = {
 base::DictValue DownloadSettings(Profile* profile) {
   DownloadPrefs* prefs = DownloadPrefs::FromBrowserContext(profile);
   return base::DictValue()
-      .Set("folder", prefs->DownloadPath().value())
+      .Set("folder", prefs->DownloadPath().AsUTF8Unsafe())
       .Set("askWhereToSave", prefs->PromptForDownload())
       .Set("managed", prefs->IsDownloadPathManaged());
 }
@@ -388,7 +388,7 @@ AC_PROFILE_CALL(ac_downloads_set_settings) {
     return call.TakeReply().Error("downloads are set by policy");
   }
   if (const std::string* folder = call.args().FindString("folder")) {
-    const base::FilePath path(*folder);
+    const base::FilePath path = base::FilePath::FromUTF8Unsafe(*folder);
     if (!path.IsAbsolute()) {
       return call.TakeReply().Error("the folder must be an absolute path");
     }

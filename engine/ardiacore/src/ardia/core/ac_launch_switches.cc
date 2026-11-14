@@ -1,13 +1,10 @@
 #include "ardia/core/ac_launch_switches.h"
 
-#include <Security/Security.h>
-
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
 
-#include "base/apple/scoped_cftyperef.h"
 #include "base/command_line.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
@@ -15,6 +12,7 @@
 #include "base/no_destructor.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
+#include "build/build_config.h"
 #include "chrome/common/chrome_switches.h"
 #include "components/os_crypt/common/os_crypt_switches.h"
 #include "content/public/common/content_switches.h"
@@ -96,9 +94,11 @@ std::string TestGateRefusal() {
   if (SignedForDistribution()) {
     return "signed for distribution";
   }
+#if BUILDFLAG(IS_MAC)
   if (!CommandLine().HasSwitch(os_crypt::switches::kUseMockKeychain)) {
     return "not on the mock keychain";
   }
+#endif
   if (!UserDataDirIsScratch()) {
     return "--user-data-dir isn't the scratch data dir's Chromium folder";
   }
@@ -121,30 +121,7 @@ std::optional<std::string> InstanceValue(std::string_view key) {
   if (!CommandLine().HasSwitch(name)) {
     return std::nullopt;
   }
-  return CommandLine().GetSwitchValueNative(name);
-}
-
-bool SignedForDistribution() {
-  static const bool distribution = [] {
-    base::apple::ScopedCFTypeRef<SecCodeRef> self;
-    if (SecCodeCopySelf(kSecCSDefaultFlags, self.InitializeInto()) !=
-        errSecSuccess) {
-      return true;
-    }
-    base::apple::ScopedCFTypeRef<SecRequirementRef> requirement;
-    if (SecRequirementCreateWithString(
-            CFSTR("anchor apple generic and "
-                  "(certificate leaf[field.1.2.840.113635.100.6.1.9] exists or "
-                  "certificate 1[field.1.2.840.113635.100.6.2.6] exists and "
-                  "certificate leaf[field.1.2.840.113635.100.6.1.13] exists)"),
-            kSecCSDefaultFlags,
-            requirement.InitializeInto()) != errSecSuccess) {
-      return true;
-    }
-    return SecCodeCheckValidity(self.get(), kSecCSDefaultFlags,
-                                requirement.get()) == errSecSuccess;
-  }();
-  return distribution;
+  return CommandLine().GetSwitchValueUTF8(name);
 }
 
 bool TestInstance() {

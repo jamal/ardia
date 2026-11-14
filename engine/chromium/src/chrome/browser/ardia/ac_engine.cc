@@ -233,7 +233,7 @@ Profile* ProfileAt(std::string_view dir) {
   if (!manager || dir.empty()) {
     return nullptr;
   }
-  return manager->GetProfileByPath(base::FilePath(dir));
+  return manager->GetProfileByPath(base::FilePath::FromUTF8Unsafe(dir));
 }
 
 content::WebContents* TabWithId(int id) {
@@ -259,7 +259,7 @@ void Emit(std::string_view topic, Profile* profile, base::DictValue payload) {
     return;
   }
   if (profile) {
-    payload.Set("profile", profile->GetOriginalProfile()->GetPath().value());
+    payload.Set("profile", profile->GetOriginalProfile()->GetPath().AsUTF8Unsafe());
     if (profile->IsOffTheRecord()) {
       payload.Set("offTheRecord", true);
     }

@@ -590,7 +590,7 @@ AC_PROFILE_CALL(ac_passwords_export) {
                             base::DictValue().Set("status", "reauthFailed"));
                       }
                       session.state->Export(session.delegate.get(),
-                                            base::FilePath(path),
+                                            base::FilePath::FromUTF8Unsafe(path),
                                             std::move(session.busy),
                                             std::move(reply));
                     },

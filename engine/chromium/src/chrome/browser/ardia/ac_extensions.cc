@@ -325,7 +325,7 @@ AC_PROFILE_CALL(ac_extensions_install) {
     return call.TakeReply().Error(
         "Extension installation is blocked by policy.");
   }
-  base::FilePath load_path(path);
+  base::FilePath load_path = base::FilePath::FromUTF8Unsafe(path);
   const bool scripts = ardia::NamesScriptsFolder(load_path);
   base::ScopedClosureRunner scripts_install;
   if (scripts) {
@@ -403,7 +403,7 @@ AC_PROFILE_CALL(ac_extensions_install_crx) {
                                          : installer->expected_id()));
       },
       call.TakeReply(), installer));
-  installer->InstallCrx(base::FilePath(path));
+  installer->InstallCrx(base::FilePath::FromUTF8Unsafe(path));
 }
 
 AC_PROFILE_CALL(ac_extensions_set_enabled) {

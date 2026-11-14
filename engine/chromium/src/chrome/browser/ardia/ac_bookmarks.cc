@@ -497,6 +497,6 @@ AC_PROFILE_CALL(ac_bookmarks_export_html) {
                     },
                     std::move(reply)));
           },
-          call.profile()->GetWeakPtr(), base::FilePath(path),
+          call.profile()->GetWeakPtr(), base::FilePath::FromUTF8Unsafe(path),
           call.TakeReply()));
 }

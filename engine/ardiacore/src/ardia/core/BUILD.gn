@@ -12,7 +12,12 @@ source_set("launch_switches") {
   ]
 
   if (is_mac) {
+    sources += [ "ac_launch_switches_mac.cc" ]
     frameworks = [ "Security.framework" ]
+  }
+  if (is_win) {
+    sources += [ "ac_launch_switches_win.cc" ]
+    libs = [ "wintrust.lib" ]
   }
 }
 
