@@ -5,9 +5,11 @@
 
 #include <optional>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "base/files/file_path.h"
+#include "base/types/expected.h"
 
 namespace ardia::scripts_paths {
 
@@ -15,9 +17,22 @@ enum class Kind { kFile, kDirectory, kOther };
 
 std::optional<Kind> KindOf(const base::FilePath& path);
 
-std::optional<base::FilePath> RealPath(const base::FilePath& path);
+enum class Unresolved { kMissing, kUnreadable };
 
-bool IsLocal(const base::FilePath& real);
+base::expected<base::FilePath, Unresolved> ResolvePath(
+    const base::FilePath& path);
+
+inline std::optional<base::FilePath> RealPath(const base::FilePath& path) {
+  base::expected<base::FilePath, Unresolved> resolved = ResolvePath(path);
+  if (!resolved.has_value()) {
+    return std::nullopt;
+  }
+  return std::move(resolved).value();
+}
+
+bool IsLocal(const base::FilePath& path);
+
+base::FilePath Canonical(const base::FilePath& path);
 
 struct Absolute {
   base::FilePath root;

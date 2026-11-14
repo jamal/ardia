@@ -2,6 +2,7 @@
 
 #include "chrome/browser/ardia/ac_scripts_paths.h"
 
+#include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -29,16 +30,23 @@ std::optional<Kind> KindOf(const base::FilePath& path) {
   }
 }
 
-std::optional<base::FilePath> RealPath(const base::FilePath& path) {
+base::expected<base::FilePath, Unresolved> ResolvePath(
+    const base::FilePath& path) {
   char resolved[PATH_MAX];
   if (!realpath(path.value().c_str(), resolved)) {
-    return std::nullopt;
+    return base::unexpected(errno == ENOENT || errno == ENOTDIR
+                                ? Unresolved::kMissing
+                                : Unresolved::kUnreadable);
   }
   return base::FilePath(resolved);
 }
 
 bool IsLocal(const base::FilePath&) {
   return true;
+}
+
+base::FilePath Canonical(const base::FilePath& path) {
+  return path;
 }
 
 std::optional<Absolute> AbsoluteParts(const base::FilePath& path) {

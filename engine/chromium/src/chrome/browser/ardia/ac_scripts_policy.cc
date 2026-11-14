@@ -51,6 +51,7 @@ using scripts_paths::IsPlainName;
 using scripts_paths::Kind;
 using scripts_paths::KindOf;
 using scripts_paths::RealPath;
+using scripts_paths::ResolvePath;
 
 constexpr size_t kMaxContentScripts = 256;
 constexpr size_t kMaxFilesPerList = 256;
@@ -162,7 +163,8 @@ class ScriptsPolicyProvider : public extensions::ManagementPolicy::Provider {
     base::FilePath user_data;
     if (base::PathService::Get(chrome::DIR_USER_DATA, &user_data) &&
         !user_data.empty()) {
-      scripts_ = user_data.DirName().Append(FILE_PATH_LITERAL("Scripts"));
+      scripts_ = scripts_paths::Canonical(user_data.DirName())
+                     .Append(FILE_PATH_LITERAL("Scripts"));
       folder_ = scripts_.Append(FILE_PATH_LITERAL("extension"));
       designated_id_ = crx_file::id_util::GenerateIdForPath(folder_);
     }
@@ -215,13 +217,16 @@ class ScriptsPolicyProvider : public extensions::ManagementPolicy::Provider {
     if (extension.id() == designated_id_) {
       return true;
     }
-    if (!extensions::Manifest::IsUnpackedLocation(extension.location()) ||
-        !NamesFolder(extension.path())) {
+    if (!extensions::Manifest::IsUnpackedLocation(extension.location())) {
       return false;
     }
     const base::FilePath path = extension.path().StripTrailingSeparators();
-    if (base::EqualsCaseInsensitiveASCII(path.value(), folder_.value())) {
+    if (NamesFolder(path) &&
+        base::EqualsCaseInsensitiveASCII(path.value(), folder_.value())) {
       return true;
+    }
+    if (!IsLocal(path)) {
+      return false;
     }
     const std::optional<base::FilePath> real_folder = RealPath(folder_);
     const std::optional<base::FilePath> real_path = RealPath(path);
@@ -430,8 +435,12 @@ bool ResolvedPrefixNamesScripts(const base::FilePath& scripts,
     if (i > 0) {
       prefix = prefix.Append(parts[i - 1]);
     }
-    const std::optional<base::FilePath> real = RealPath(prefix);
-    if (!real) {
+    const base::expected<base::FilePath, scripts_paths::Unresolved> real =
+        ResolvePath(prefix);
+    if (!real.has_value()) {
+      if (real.error() == scripts_paths::Unresolved::kUnreadable) {
+        return true;
+      }
       continue;
     }
     if (!IsLocal(*real)) {
@@ -455,7 +464,13 @@ bool RequestNamesScripts(const base::FilePath& scripts,
   }
   std::vector<base::FilePath::StringType> rest;
   for (base::FilePath ancestor = absolute;; ancestor = ancestor.DirName()) {
-    if (std::optional<base::FilePath> real = RealPath(ancestor)) {
+    const base::expected<base::FilePath, scripts_paths::Unresolved> real =
+        ResolvePath(ancestor);
+    if (!real.has_value() &&
+        real.error() == scripts_paths::Unresolved::kUnreadable) {
+      return true;
+    }
+    if (real.has_value()) {
       if (!IsLocal(*real)) {
         return true;
       }
@@ -523,6 +538,9 @@ bool NamesScriptsFolder(const base::FilePath& path) {
   if (base::EqualsCaseInsensitiveASCII(path.StripTrailingSeparators().value(),
                                        folder.value())) {
     return true;
+  }
+  if (!IsLocal(path)) {
+    return false;
   }
   const std::optional<base::FilePath> real_path = RealPath(path);
   const std::optional<base::FilePath> real_folder = RealPath(folder);

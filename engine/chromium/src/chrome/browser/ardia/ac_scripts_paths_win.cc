@@ -120,13 +120,18 @@ std::optional<Kind> KindOf(const base::FilePath& path) {
                                                  : Kind::kFile;
 }
 
-std::optional<base::FilePath> RealPath(const base::FilePath& path) {
+base::expected<base::FilePath, Unresolved> ResolvePath(
+    const base::FilePath& path) {
   base::win::ScopedHandle handle(::CreateFileW(
       path.value().c_str(), 0,
       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
       OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr));
   if (!handle.is_valid()) {
-    return std::nullopt;
+    const DWORD error = ::GetLastError();
+    return base::unexpected(
+        error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND
+            ? Unresolved::kMissing
+            : Unresolved::kUnreadable);
   }
   std::wstring buffer(MAX_PATH, L'\0');
   for (;;) {
@@ -134,7 +139,7 @@ std::optional<base::FilePath> RealPath(const base::FilePath& path) {
         handle.get(), buffer.data(), static_cast<DWORD>(buffer.size()),
         FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
     if (length == 0) {
-      return std::nullopt;
+      return base::unexpected(Unresolved::kUnreadable);
     }
     if (length < buffer.size()) {
       buffer.resize(length);
@@ -153,8 +158,13 @@ std::optional<base::FilePath> RealPath(const base::FilePath& path) {
   return base::FilePath(final_path);
 }
 
-bool IsLocal(const base::FilePath& real) {
-  return HasDriveRoot(std::wstring_view(real.value()));
+bool IsLocal(const base::FilePath& path) {
+  return HasDriveRoot(std::wstring_view(path.value()));
+}
+
+base::FilePath Canonical(const base::FilePath& path) {
+  std::optional<base::FilePath> real = RealPath(path);
+  return real && IsLocal(*real) ? *real : path;
 }
 
 std::optional<Absolute> AbsoluteParts(const base::FilePath& path) {

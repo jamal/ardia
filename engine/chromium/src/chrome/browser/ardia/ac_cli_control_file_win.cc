@@ -26,8 +26,8 @@
 namespace ardia::cli_control_internal {
 namespace {
 
-constexpr int kReplaceAttempts = 5;
-constexpr base::TimeDelta kReplaceRetryDelay = base::Milliseconds(20);
+constexpr int kReplaceAttempts = 3;
+constexpr base::TimeDelta kReplaceRetryDelay = base::Milliseconds(10);
 
 struct LocalFreeDeleter {
   void operator()(void* memory) const { ::LocalFree(memory); }
@@ -50,7 +50,8 @@ ScopedSecurityDescriptor OwnerOnlyDescriptor() {
   if (!base::win::GetUserSidString(&user_sid) || user_sid.empty()) {
     return nullptr;
   }
-  const std::wstring sddl = L"D:P(A;;FA;;;" + user_sid + L")";
+  const std::wstring sddl =
+      L"D:P(A;;FA;;;" + user_sid + L")S:(ML;;NRNW;;;ME)";
   PSECURITY_DESCRIPTOR descriptor = nullptr;
   if (!::ConvertStringSecurityDescriptorToSecurityDescriptorW(
           sddl.c_str(), SDDL_REVISION_1, &descriptor, nullptr)) {
@@ -59,20 +60,37 @@ ScopedSecurityDescriptor OwnerOnlyDescriptor() {
   return ScopedSecurityDescriptor(descriptor);
 }
 
-bool WriteAll(HANDLE file, const std::string& contents) {
+DWORD LastErrorOr(DWORD fallback) {
+  const DWORD error = ::GetLastError();
+  return error == ERROR_SUCCESS ? fallback : error;
+}
+
+DWORD WriteAll(HANDLE file, const std::string& contents) {
   size_t offset = 0;
   while (offset < contents.size()) {
     const DWORD chunk = static_cast<DWORD>(
         std::min<size_t>(contents.size() - offset, 1 << 20));
     DWORD written = 0;
     if (!::WriteFile(file, contents.data() + offset, chunk, &written,
-                     nullptr) ||
-        written == 0) {
-      return false;
+                     nullptr)) {
+      return LastErrorOr(ERROR_WRITE_FAULT);
+    }
+    if (written == 0) {
+      return ERROR_WRITE_FAULT;
     }
     offset += written;
   }
-  return true;
+  return ::FlushFileBuffers(file) ? ERROR_SUCCESS
+                                  : LastErrorOr(ERROR_WRITE_FAULT);
+}
+
+bool KeepsPermissions(const base::FilePath& path) {
+  wchar_t volume[MAX_PATH + 1] = {};
+  DWORD flags = 0;
+  return ::GetVolumePathNameW(path.value().c_str(), volume, MAX_PATH + 1) &&
+         ::GetVolumeInformationW(volume, nullptr, 0, nullptr, nullptr, &flags,
+                                 nullptr, 0) &&
+         (flags & FILE_PERSISTENT_ACLS);
 }
 
 bool Transient(DWORD error) {
@@ -104,9 +122,13 @@ std::string WriteOwnerOnlyFile(const base::FilePath& path,
   const base::FilePath temp = path.DirName().Append(
       L"." + path.BaseName().value() + L"." +
       base::ASCIIToWide(base::HexEncode(base::RandBytesAsVector(8))));
+  if (!KeepsPermissions(path)) {
+    return base::StrCat({"Couldn't write ", path.AsUTF8Unsafe(),
+                         ": its drive doesn't keep file permissions"});
+  }
   ScopedSecurityDescriptor descriptor = OwnerOnlyDescriptor();
   if (!descriptor) {
-    return CouldntWrite(path, ::GetLastError());
+    return CouldntWrite(path, LastErrorOr(ERROR_INVALID_SID));
   }
   SECURITY_ATTRIBUTES attributes = {};
   attributes.nLength = sizeof(attributes);
@@ -118,10 +140,7 @@ std::string WriteOwnerOnlyFile(const base::FilePath& path,
   if (!file.is_valid()) {
     return CouldntWrite(path, ::GetLastError());
   }
-  DWORD error = ERROR_SUCCESS;
-  if (!WriteAll(file.get(), contents) || !::FlushFileBuffers(file.get())) {
-    error = ::GetLastError();
-  }
+  DWORD error = WriteAll(file.get(), contents);
   file.Close();
   if (error != ERROR_SUCCESS) {
     ::DeleteFileW(temp.value().c_str());
